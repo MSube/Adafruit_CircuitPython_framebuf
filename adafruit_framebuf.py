@@ -121,14 +121,18 @@ class MVLSBFormat:
         """Draw a rectangle at the given location, size and color. The ``fill_rect`` method draws
         both the outline and interior."""
         # pylint: disable=too-many-arguments
-        while height > 0:
-            index = (y >> 3) * framebuf.stride + x
-            offset = y & 0x07
-            for w_w in range(width):
-                framebuf.buf[index + w_w] = (framebuf.buf[index + w_w] & ~(0x01 << offset)) |\
-                                           ((color != 0) << offset)
-            y += 1
-            height -= 1
+        mask = (((1 << height) - 1) << y) # bits to change
+        for y in range((y >> 3), ((y + height + 7) >> 3)): # foreach row of bytes
+            m = (mask >> (y << 3)) & 0xFF # bits to change in byte
+            c = (-color) & m # color bits as byte
+            m ^= 0xFF # bits to keep in byte
+            # for one row of bytes
+            if m: # some bits are kept
+                for i in range( y * framebuf.stride + x, y * framebuf.stride + x + width):
+                    framebuf.buf[i] = (framebuf.buf[i] & m) | c
+            else: # all bits are changed
+                for i in range( y * framebuf.stride + x, y * framebuf.stride + x + width):
+                    framebuf.buf[i] = c
 
 class FrameBuffer:
     """FrameBuffer object.
