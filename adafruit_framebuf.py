@@ -414,15 +414,15 @@ class BitmapFont:
         #   y < -self.font_height or y >= framebuffer.height:
         #    return
         # Go through each column of the character.
-        for char_x in range(self.font_width):
-            # Grab the byte for the current column of font data.
-            self._font.seek(2 + (ord(char) * self.font_width) + char_x)
-            try:
-               line = struct.unpack('B', self._font.read(1))[0]
-            except RuntimeError:
-               continue # maybe character isnt there? go to next
-            # Go through each row in the column byte.
-            framebuffer.draw_vpixels((x + char_x), y, 8, line)
+        try:
+           self._font.seek(2 + (ord(char) * self.font_width))
+           line = self._font.read(self.font_width)
+        except RuntimeError:
+           return # maybe character isnt there? go to next
+        # display byte after byte
+        for i, b in enumerate(line):
+            if b != 0:
+                framebuffer.draw_vpixels((x + i), y, 8, b)
 
     def width(self, text):
         """Return the pixel width of the specified text message."""
