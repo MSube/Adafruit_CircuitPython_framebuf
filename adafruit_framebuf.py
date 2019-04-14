@@ -134,6 +134,22 @@ class MVLSBFormat:
                 for i in range( y * framebuf.stride + x, y * framebuf.stride + x + width):
                     framebuf.buf[i] = c
 
+    @staticmethod
+    def draw_vpixels(framebuf, x, y, height, pixels):
+        """Draw a 1 pixel wide width at the given location, size and color."""
+        # pylint: disable=too-many-arguments
+        mask = ((1 << height) - 1) << y
+        pixels <<= y
+        #	print('{:X} {:X}'.format(mask, pixels))
+        for y in range((y >> 3), ((y + height + 7) >> 3)):
+            m = (mask >> (y << 3)) & 0xFF # bits to change in byte
+            c = (pixels >> (y << 3)) & 0xFF & m # color bits in byte
+            m ^= 0xFF # bits to keep in byte
+            if m: # some bits are kept
+                framebuf.buf[y * framebuf.stride + x] = (framebuf.buf[y * framebuf.stride + x] & m) | c
+            else: # all bits are changed
+                framebuf.buf[y * framebuf.stride + x] = c
+
 class FrameBuffer:
     """FrameBuffer object.
 
@@ -340,6 +356,14 @@ class FrameBuffer:
                 if pixels[(x, y)]:
                     self.pixel(x, y, 1)   # only write if pixel is true
 
+    def draw_vpixels(self, x, y, height, pixels):
+        if self.rotation == 0:
+            self.format.draw_vpixels(self, x, y, height, pixels)
+        else:
+            pixels <<= y
+            for y in range(y, y + height):
+                self.format.set_pixel(self, x, y, (pixels >> y) & 1)
+
 # MicroPython basic bitmap font renderer.
 # Author: Tony DiCola
 # License: MIT License (https://opensource.org/licenses/MIT)
@@ -390,18 +414,15 @@ class BitmapFont:
         #   y < -self.font_height or y >= framebuffer.height:
         #    return
         # Go through each column of the character.
-        for char_x in range(self.font_width):
-            # Grab the byte for the current column of font data.
-            self._font.seek(2 + (ord(char) * self.font_width) + char_x)
-            try:
-                line = struct.unpack('B', self._font.read(1))[0]
-            except RuntimeError:
-                continue # maybe character isnt there? go to next
-            # Go through each row in the column byte.
-            for char_y in range(self.font_height):
-                # Draw a pixel for each bit that's flipped on.
-                if (line >> char_y) & 0x1:
-                    framebuffer.pixel(x + char_x, y + char_y, color)
+        try:
+           self._font.seek(2 + (ord(char) * self.font_width))
+           line = self._font.read(self.font_width)
+        except RuntimeError:
+           return # maybe character isnt there? go to next
+        # display byte after byte
+        for i, b in enumerate(line):
+            if b != 0:
+                framebuffer.draw_vpixels((x + i), y, 8, b)
 
     def width(self, text):
         """Return the pixel width of the specified text message."""
